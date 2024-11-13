@@ -1,18 +1,23 @@
 from INRF import INRF
+import numpy as np
 import jax
 from jax import random, numpy as jnp
+from flax import struct
+from flax.core import FrozenDict, pop
 import flax.linen as nn
+from flax.training import train_state
+from clu import metrics
 import optax
 import tensorflow as tf
 tf.config.set_visible_devices([], device_type="GPU")
 from keras.datasets.mnist import load_data
 
-from paramperceptnet.training import create_train_state
-
 ## Load data
 (X_train, Y_train), (X_test, Y_test) = load_data()
 X_train = X_train[...,None]/255.
 X_test = X_test[...,None]/255.
+Y_train = Y_train.astype(np.int32)
+Y_test = Y_test.astype(np.int32)
 
 dst_train = tf.data.Dataset.from_tensor_slices((X_train, Y_train))
 dst_test = tf.data.Dataset.from_tensor_slices((X_test, Y_test))
@@ -22,6 +27,31 @@ dst_train_rdy = dst_train.shuffle(buffer_size=50, seed=42, reshuffle_each_iterat
                          .prefetch(1)
 dst_test_rdy = dst_test.batch(32, num_parallel_calls=tf.data.AUTOTUNE)\
                         .prefetch(1)
+## Boilerplate
+@struct.dataclass
+class Metrics(metrics.Collection):
+    """Collection of metrics to be tracked during training."""
+
+    loss: metrics.Average.from_output("loss")
+    accuracy: metrics.Accuracy
+
+
+class TrainState(train_state.TrainState):
+    metrics: Metrics
+    state: FrozenDict
+
+
+def create_train_state(module, key, tx, input_shape):
+    """Creates the initial `TrainState`."""
+    variables = module.init(key, jnp.ones(input_shape))
+    state, params = pop(variables, "params")
+    return TrainState.create(
+        apply_fn=module.apply,
+        params=params,
+        state=state,
+        tx=tx,
+        metrics=Metrics.empty(),
+    )
 
 ## Model
 class Model(nn.Module):
@@ -38,10 +68,11 @@ def train_step(state, batch):
     X, Y = batch
     def loss_fn(params):
         pred = state.apply_fn({"params":params}, X)
-        return optax.softmax_cross_entropy_with_integer_labels(pred, Y).mean()
-    loss, grads =  jax.value_and_grad(loss_fn)(state.params)
+        return optax.softmax_cross_entropy_with_integer_labels(pred, Y).mean(), pred
+
+    (loss, pred), grads =  jax.value_and_grad(loss_fn, has_aux=True)(state.params)
     state = state.apply_gradients(grads=grads)
-    metrics_updates = state.metrics.single_from_model_output(loss=loss)
+    metrics_updates = state.metrics.single_from_model_output(logits=pred, labels=Y, loss=loss)
     metrics = state.metrics.merge(metrics_updates)
     state = state.replace(metrics=metrics)
     return loss, state
@@ -52,15 +83,16 @@ def compute_metrics(state, batch):
     X, Y = batch
     def loss_fn(params):
         pred = state.apply_fn({"params":params}, X)
-        return optax.softmax_cross_entropy_with_integer_labels(pred, Y).mean()
+        return optax.softmax_cross_entropy_with_integer_labels(pred, Y).mean(), pred
 
-    metrics_updates = state.metrics.single_from_model_output(loss=loss_fn(state.params))
+    loss, pred = loss_fn(state.params)
+    metrics_updates = state.metrics.single_from_model_output(logits=pred, labels=Y, loss=loss)
     metrics = state.metrics.merge(metrics_updates)
     state = state.replace(metrics=metrics)
     return state
 
 ## Initialize metrics
-metrics_history = {'train_loss':[], 'val_loss':[]}
+metrics_history = {'train_loss':[], 'val_loss':[], 'train_accuracy':[], 'val_accuracy':[]}
 
 ## Training Loop
 epochs = 10
@@ -88,4 +120,4 @@ for epoch in range(epochs):
     state = state.replace(metrics=state.metrics.empty())
 
     ## Logging ##
-    print(f"Epoch {epoch} -> [Train] Loss: {metrics_history['train_loss'][-1]} | [Val] Loss: {metrics_history['val_loss'][-1]}")
+    print(f"Epoch {epoch} -> [Train] Loss: {metrics_history['train_loss'][-1]} Acc: {metrics_history['train_accuracy'][-1]} | [Val] Loss: {metrics_history['val_loss'][-1]} Acc: {metrics_history['val_accuracy'][-1]} ")
