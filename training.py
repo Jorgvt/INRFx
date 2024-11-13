@@ -62,9 +62,9 @@ class Model(nn.Module):
         return outputs
 
 state = create_train_state(Model(), random.PRNGKey(42), tx=optax.adam(3e-4), input_shape=X_train[:1].shape)
-total_parameters = jax.tree_util.tree_map(lambda x: x.size(), state.params)
+total_parameters = jax.tree_util.tree_map(lambda x: x.size, state.params)
 total_parameters = sum(jax.tree_util.tree_leaves(total_parameters))
-raise 
+print(f"Total parameters: {total_parameters}")
 
 @jax.jit
 def train_step(state, batch):
