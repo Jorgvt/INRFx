@@ -66,6 +66,7 @@ class INRF(nn.Module):
 
 if __name__ == "__main__":
     model = INRF(features=1, kernel_size=(3,3))
-    variables = model.init(random.PRNGKey(42), jnp.ones((1,14,14,1)))
+    pred, variables = model.init_with_output(random.PRNGKey(42), jnp.ones((1,7,7,1)))
+    print(pred.shape)
     print(jax.tree_util.tree_map(lambda x: x.shape, variables))
 
