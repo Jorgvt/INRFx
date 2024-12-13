@@ -43,7 +43,8 @@ class INRF(nn.Module):
         difference = jax.vmap(
                         jax.vmap(
                             jax.vmap(
-                                lambda x,y: self.S(x-y).sum(axis=(1,2,3)),
+                                # y is the full batch of images, so we give x null dimensions for broadcasting
+                                lambda x,y: self.S(x[:,None,None,None]-y).sum(axis=(1,2,3)), 
                                 in_axes=(1,None), out_axes=1
                             ), in_axes=(2,None), out_axes=2
                         ), in_axes=(3,None), out_axes=3
@@ -63,8 +64,8 @@ class INRF(nn.Module):
         return outputs
 
 if __name__ == "__main__":
-    model = INRF(features=1, kernel_size=(3,3))
-    pred, variables = model.init_with_output(random.PRNGKey(42), jnp.ones((1,28,28,1)))
+    model = INRF(features=64, kernel_size=(3,3))
+    pred, variables = model.init_with_output(random.PRNGKey(42), jnp.ones((4,28,28,1)))
     print(pred.shape)
     print(jax.tree_util.tree_map(lambda x: x.shape, variables))
 
