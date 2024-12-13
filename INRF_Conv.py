@@ -40,11 +40,12 @@ class INRF(nn.Module):
         blurred_input = jnp.transpose(blurred_input, (0, 2, 3, 1))
 
         ## Iterate over positions
+        n_elements = h*w*c
         difference = jax.vmap(
                         jax.vmap(
                             jax.vmap(
                                 # y is the full batch of images, so we give x null dimensions for broadcasting
-                                lambda x,y: self.S(x[:,None,None,None]-y).sum(axis=(1,2,3)), 
+                                lambda x,y: self.S(x[:,None,None,None]-y).sum(axis=(1,2,3))/n_elements, 
                                 in_axes=(1,None), out_axes=1
                             ), in_axes=(2,None), out_axes=2
                         ), in_axes=(3,None), out_axes=3
