@@ -39,18 +39,16 @@ class INRF(nn.Module):
         ## Move the channels back to the last dim
         blurred_input = jnp.transpose(blurred_input, (0, 2, 3, 1))
 
-        difference = jnp.empty_like(inputs)
         ## Iterate over positions
-        for i in range(h):
-            for j in range(w):
-                for k in range(c):
-                    ## Each position has to take the difference with respect every other
-                    d = 0
-                    for ii in range(h):
-                        for jj in range(w):
-                            for kk in range(c):
-                                d += self.S(inputs[:,ii,jj,kk] - blurred_input[:,i,j,k])
-                    difference = difference.at[:,i,j,k].set(d)
+        difference = jax.vmap(
+                        jax.vmap(
+                            jax.vmap(
+                                lambda x,y: self.S(x-y).sum(axis=(1,2,3)),
+                                in_axes=(1,None), out_axes=1
+                            ), in_axes=(2,None), out_axes=2
+                        ), in_axes=(3,None), out_axes=3
+        )(inputs, blurred_input)
+
         ## Assuming that w is the same for every pixel we can take it out of the sum
         second_term = lax.conv_general_dilated(
             jnp.transpose(difference, [0, 3, 1, 2]),  # lhs = NCHW image tensor
@@ -66,7 +64,7 @@ class INRF(nn.Module):
 
 if __name__ == "__main__":
     model = INRF(features=1, kernel_size=(3,3))
-    pred, variables = model.init_with_output(random.PRNGKey(42), jnp.ones((1,7,7,1)))
+    pred, variables = model.init_with_output(random.PRNGKey(42), jnp.ones((1,28,28,1)))
     print(pred.shape)
     print(jax.tree_util.tree_map(lambda x: x.shape, variables))
 
