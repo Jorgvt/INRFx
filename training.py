@@ -1,4 +1,5 @@
-from INRF import INRF
+# from INRF import INRF
+from INRF_Conv import INRF
 import numpy as np
 import jax
 from jax import random, numpy as jnp
