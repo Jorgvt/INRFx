@@ -26,6 +26,7 @@ class INRF(nn.Module):
         M = GaussianLayerGamma(features=self.features, kernel_size=self.kernel_size, strides=self.strides, padding=self.padding, fs=self.fs, normalize_prob=False, normalize_energy=True, name="m")
         W = GaussianLayerGamma(features=self.features, kernel_size=self.kernel_size, strides=self.strides, padding=self.padding, fs=self.fs, normalize_prob=False, normalize_energy=True, name="w")
         G = GaussianLayerGamma(features=self.features, kernel_size=self.kernel_size, strides=self.strides, padding=self.padding, fs=self.fs, normalize_prob=False, normalize_energy=True, name="g")
+        l = self.param("lambda", nn.initializers.ones_init(), (1,))
 
         ## Calculate first term
         first_term = M(inputs, **kwargs)
@@ -51,7 +52,7 @@ class INRF(nn.Module):
         ## Assuming that w is the same for every pixel we can take it out of the sum
         second_term = W(difference, **kwargs)
 
-        outputs = first_term - self.l*second_term
+        outputs = first_term - l*second_term
 
         return outputs
 
